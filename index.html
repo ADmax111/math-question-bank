@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>智能数学题库</title>
+  <!-- KaTeX CSS -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <!-- Supabase SDK -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f7fa; padding: 16px; color: #1e293b; }
+    .container { max-width: 900px; margin: 0 auto; }
+    h1 { font-size: 1.8rem; margin-bottom: 16px; }
+    .card { background: #fff; border-radius: 20px; padding: 20px; margin-bottom: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+    button { background: #3b82f6; color: white; border: none; padding: 10px 16px; border-radius: 12px; font-size: 0.95rem; cursor: pointer; margin-right: 8px; margin-bottom: 8px; }
+    .question-card { background: #fff; border-radius: 16px; padding: 16px; margin-bottom: 12px; border: 1px solid #e2e8f0; }
+    .badge { background: #eef2ff; padding: 4px 12px; border-radius: 16px; font-size: 0.85rem; }
+  </style>
+</head>
+<body>
+<div class="container">
+  <h1>🧮 智能数学题库</h1>
+  <div class="card">
+    <button onclick="refreshQuestions()">🔄 刷新</button>
+    <button onclick="alert('功能开发中')">📤 批量导入</button>
+    <button onclick="alert('功能开发中')">📄 导出PDF</button>
+    <div id="questionsList" style="margin-top:20px;"></div>
+  </div>
+</div>
+<script>
+  const SUPABASE_URL = 'https://tpmwuuggskorbirstogi.supabase.co';
+  const SUPABASE_ANON_KEY = 'sb_publishable_qHDtCWAxkNXPD5-9fN-NVw_gnzrP12C';
+  const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  async function refreshQuestions() {
+    const { data, error } = await supabase.from('questions').select('*');
+    if (error) { document.getElementById('questionsList').innerHTML = '<p>加载失败</p>'; return; }
+    if (!data || data.length === 0) { document.getElementById('questionsList').innerHTML = '<p>暂无题目</p>'; return; }
+    
+    let html = '';
+    data.forEach(q => {
+      html += '<div class="question-card">';
+      html += '<div style="display:flex; justify-content:space-between; margin-bottom:8px;">';
+      html += '<span class="badge">' + (q.set_name || '') + '</span>';
+      html += '<span class="badge">' + (q.difficulty || '') + '</span>';
+      html += '</div>';
+      html += '<div style="font-size:1.1rem; margin:12px 0;" id="q-' + q.id + '">' + (q.content || '') + '</div>';
+      html += '<button onclick="toggleAnswer(' + q.id + ')">🔍 显示答案</button>';
+      html += '<div id="ans-' + q.id + '" style="display:none; margin-top:12px; padding:12px; background:#f8fafc; border-radius:12px;">';
+      html += '<div id="a-' + q.id + '"><strong>答案：</strong>' + (q.answer || '') + '</div>';
+      html += '<div id="ana-' + q.id + '" style="margin-top:8px;"><strong>解析：</strong>' + (q.analysis || '') + '</div>';
+      html += '</div></div>';
+    });
+    document.getElementById('questionsList').innerHTML = html;
+    
+    // 渲染 KaTeX
+    if (window.katex) {
+      data.forEach(q => {
+        try {
+          const el = document.getElementById('q-' + q.id);
+          if (el) window.katex.render(q.content, el, { throwOnError: false });
+          const aEl = document.getElementById('a-' + q.id);
+          if (aEl) window.katex.render('答案：' + q.answer, aEl, { throwOnError: false });
+        } catch(e) {}
+      });
+    }
+  }
+
+  function toggleAnswer(id) {
+    const ans = document.getElementById('ans-' + id);
+    ans.style.display = ans.style.display === 'none' ? 'block' : 'none';
+  }
+
+  // 加载 KaTeX 并刷新
+  const katexScript = document.createElement('script');
+  katexScript.src = 'https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js';
+  katexScript.onload = () => refreshQuestions();
+  document.head.appendChild(katexScript);
+</script>
+</body>
+</html>
