@@ -2,78 +2,248 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>智能数学题库</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.5, user-scalable=yes">
+  <title>智能数学题库 · 完全体</title>
   <!-- KaTeX CSS -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
   <!-- Supabase SDK -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <!-- Papa Parse (CSV解析) -->
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <!-- html2canvas + jsPDF (PDF导出) -->
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f7fa; padding: 16px; color: #1e293b; }
-    .container { max-width: 900px; margin: 0 auto; }
-    h1 { font-size: 1.8rem; margin-bottom: 16px; }
+    .container { max-width: 1000px; margin: 0 auto; }
+    h1 { font-size: 1.8rem; margin-bottom: 16px; display: flex; align-items: center; gap: 10px; }
     .card { background: #fff; border-radius: 20px; padding: 20px; margin-bottom: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
-    button { background: #3b82f6; color: white; border: none; padding: 10px 16px; border-radius: 12px; font-size: 0.95rem; cursor: pointer; margin-right: 8px; margin-bottom: 8px; }
+    button { background: #3b82f6; color: white; border: none; padding: 10px 16px; border-radius: 12px; font-size: 0.95rem; cursor: pointer; margin-right: 8px; margin-bottom: 8px; font-weight: 500; }
+    button.secondary { background: #f1f5f9; color: #1e293b; }
+    button.danger { background: #ef4444; }
+    .filter-bar { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; align-items: center; }
+    select, input { padding: 10px 14px; border-radius: 12px; border: 1px solid #cbd5e1; font-size: 0.95rem; background: #fff; }
+    .tag-cloud { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+    .tag { background: #eef2ff; color: #3b82f6; padding: 6px 14px; border-radius: 20px; font-size: 0.85rem; cursor: pointer; user-select: none; border: 1px solid transparent; }
+    .tag.selected { background: #3b82f6; color: white; }
     .question-card { background: #fff; border-radius: 16px; padding: 16px; margin-bottom: 12px; border: 1px solid #e2e8f0; }
-    .badge { background: #eef2ff; padding: 4px 12px; border-radius: 16px; font-size: 0.85rem; }
+    .badge { background: #eef2ff; padding: 4px 12px; border-radius: 16px; font-size: 0.8rem; display: inline-block; margin-right: 6px; }
+    .pagination { display: flex; justify-content: center; gap: 8px; margin: 24px 0; }
+    .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: none; justify-content: center; align-items: center; z-index: 1000; }
+    .modal-content { background: white; border-radius: 24px; padding: 24px; max-width: 600px; width: 90%; max-height: 80vh; overflow-y: auto; }
+    .form-group { margin-bottom: 16px; }
+    .form-group label { display: block; font-weight: 500; margin-bottom: 6px; }
+    .form-group input, .form-group textarea, .form-group select { width: 100%; }
+    #snackbar { visibility: hidden; min-width: 200px; background: #1e293b; color: white; text-align: center; border-radius: 40px; padding: 12px 20px; position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); z-index: 999; }
+    #snackbar.show { visibility: visible; animation: fadein 0.3s, fadeout 0.3s 2.5s; }
+    @keyframes fadein { from {opacity: 0;} to {opacity: 1;} }
+    @keyframes fadeout { from {opacity: 1;} to {opacity: 0;} }
   </style>
 </head>
 <body>
 <div class="container">
-  <h1>🧮 智能数学题库</h1>
+  <h1>🧮 智能数学题库 <span style="font-size:0.9rem; font-weight:400; color:#64748b;">完全体</span></h1>
+  
   <div class="card">
-    <button onclick="refreshQuestions()">🔄 刷新</button>
-    <button onclick="alert('功能开发中')">📤 批量导入</button>
-    <button onclick="alert('功能开发中')">📄 导出PDF</button>
-    <div id="questionsList" style="margin-top:20px;"></div>
+    <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px;">
+      <button onclick="document.getElementById('csvFileInput').click()">📤 批量导入CSV</button>
+      <input type="file" id="csvFileInput" accept=".csv" style="display:none;" onchange="importCSV(event)">
+      <button onclick="exportPDF()" class="secondary">📄 导出PDF</button>
+      <button onclick="refreshQuestions()">🔄 刷新</button>
+    </div>
+    
+    <div class="filter-bar">
+      <div><label>📚 套题</label><select id="setSelect" onchange="applyFilters()"><option value="">全部套题</option></select></div>
+      <div><label>📊 难度</label><select id="difficultySelect" onchange="applyFilters()"><option value="">全部</option><option value="简单">简单</option><option value="中等">中等</option><option value="困难">困难</option></select></div>
+      <div><label>🔗 标签逻辑</label><select id="tagLogic"><option value="AND">且(AND)</option><option value="OR">或(OR)</option></select></div>
+    </div>
+    
+    <div><strong>🏷️ 点击标签筛选</strong></div>
+    <div id="tagCloud" class="tag-cloud"></div>
+  </div>
+  
+  <div id="questionsList"></div>
+  <div id="pagination" class="pagination"></div>
+</div>
+
+<div id="snackbar"></div>
+
+<!-- 编辑模态框 -->
+<div id="editModal" class="modal">
+  <div class="modal-content">
+    <h3>✏️ 编辑题目</h3>
+    <input type="hidden" id="editId">
+    <div class="form-group"><label>题干 (支持LaTeX: \\(...\\) )</label><textarea id="editContent" rows="3"></textarea></div>
+    <div class="form-group"><label>选项 (JSON数组)</label><input id="editOptions" placeholder='["A. 1","B. 2"]'></div>
+    <div class="form-group"><label>答案</label><input id="editAnswer"></div>
+    <div class="form-group"><label>解析</label><textarea id="editAnalysis" rows="2"></textarea></div>
+    <div class="form-group"><label>标签 (逗号分隔)</label><input id="editTags" placeholder="导数, 基础, 难题"></div>
+    <div class="form-group"><label>套题名称</label><input id="editSetName"></div>
+    <div class="form-group"><label>难度</label><select id="editDifficulty"><option value="简单">简单</option><option value="中等">中等</option><option value="困难">困难</option></select></div>
+    <div style="display:flex; gap:10px; justify-content:flex-end;">
+      <button onclick="closeModal()" class="secondary">取消</button>
+      <button onclick="saveEdit()">保存</button>
+    </div>
   </div>
 </div>
+
 <script>
   const SUPABASE_URL = 'https://tpmwuuggskorbirstogi.supabase.co';
   const SUPABASE_ANON_KEY = 'sb_publishable_qHDtCWAxkNXPD5-9fN-NVw_gnzrP12C';
+  const EDIT_PASSWORD = '123456';
   const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
-  async function refreshQuestions() {
-    const { data, error } = await supabase.from('questions').select('*');
-    if (error) { document.getElementById('questionsList').innerHTML = '<p>加载失败</p>'; return; }
-    if (!data || data.length === 0) { document.getElementById('questionsList').innerHTML = '<p>暂无题目</p>'; return; }
-    
-    let html = '';
-    data.forEach(q => {
-      html += '<div class="question-card">';
-      html += '<div style="display:flex; justify-content:space-between; margin-bottom:8px;">';
-      html += '<span class="badge">' + (q.set_name || '') + '</span>';
-      html += '<span class="badge">' + (q.difficulty || '') + '</span>';
-      html += '</div>';
-      html += '<div style="font-size:1.1rem; margin:12px 0;" id="q-' + q.id + '">' + (q.content || '') + '</div>';
-      html += '<button onclick="toggleAnswer(' + q.id + ')">🔍 显示答案</button>';
-      html += '<div id="ans-' + q.id + '" style="display:none; margin-top:12px; padding:12px; background:#f8fafc; border-radius:12px;">';
-      html += '<div id="a-' + q.id + '"><strong>答案：</strong>' + (q.answer || '') + '</div>';
-      html += '<div id="ana-' + q.id + '" style="margin-top:8px;"><strong>解析：</strong>' + (q.analysis || '') + '</div>';
-      html += '</div></div>';
+  
+  let allTags = [], selectedTags = [], currentPage = 1, totalCount = 0;
+  const PAGE_SIZE = 10;
+  
+  window.onload = () => { loadSets(); loadTags(); refreshQuestions(); };
+  
+  function showSnackbar(msg) { const sb = document.getElementById('snackbar'); sb.textContent = msg; sb.className = 'show'; setTimeout(() => sb.className = '', 3000); }
+  
+  async function loadSets() {
+    const { data } = await supabase.from('questions').select('set_name');
+    if (data) { const sets = [...new Set(data.map(d => d.set_name).filter(Boolean))]; const select = document.getElementById('setSelect'); sets.forEach(s => { if (![...select.options].some(o => o.value === s)) select.add(new Option(s, s)); }); }
+  }
+  
+  async function loadTags() {
+    const { data } = await supabase.from('questions').select('tags');
+    if (data) { const tagSet = new Set(); data.forEach(d => { if (d.tags) d.tags.forEach(t => tagSet.add(t)); }); allTags = Array.from(tagSet).sort(); renderTagCloud(); }
+  }
+  
+  function renderTagCloud() {
+    const cloud = document.getElementById('tagCloud');
+    cloud.innerHTML = '';
+    allTags.forEach(tag => {
+      const span = document.createElement('span');
+      span.className = 'tag' + (selectedTags.includes(tag) ? ' selected' : '');
+      span.textContent = tag;
+      span.onclick = () => {
+        if (selectedTags.includes(tag)) selectedTags = selectedTags.filter(t => t !== tag);
+        else selectedTags.push(tag);
+        renderTagCloud(); applyFilters();
+      };
+      cloud.appendChild(span);
     });
-    document.getElementById('questionsList').innerHTML = html;
-    
-    // 渲染 KaTeX
-    if (window.katex) {
-      data.forEach(q => {
-        try {
-          const el = document.getElementById('q-' + q.id);
-          if (el) window.katex.render(q.content, el, { throwOnError: false });
-          const aEl = document.getElementById('a-' + q.id);
-          if (aEl) window.katex.render('答案：' + q.answer, aEl, { throwOnError: false });
-        } catch(e) {}
-      });
+  }
+  
+  function applyFilters() { currentPage = 1; refreshQuestions(); }
+  
+  async function refreshQuestions() {
+    const set = document.getElementById('setSelect').value;
+    const difficulty = document.getElementById('difficultySelect').value;
+    const logic = document.getElementById('tagLogic').value;
+    let query = supabase.from('questions').select('*', { count: 'exact' });
+    if (set) query = query.eq('set_name', set);
+    if (difficulty) query = query.eq('difficulty', difficulty);
+    if (selectedTags.length) query = (logic === 'AND') ? query.contains('tags', selectedTags) : query.overlaps('tags', selectedTags);
+    const from = (currentPage - 1) * PAGE_SIZE;
+    query = query.range(from, from + PAGE_SIZE - 1).order('created_at', { ascending: false });
+    const { data, error, count } = await query;
+    if (error) { showSnackbar('加载失败'); return; }
+    totalCount = count || 0;
+    renderQuestions(data);
+    renderPagination();
+  }
+  
+  function renderQuestions(questions) {
+    const container = document.getElementById('questionsList');
+    if (!questions || questions.length === 0) { container.innerHTML = '<div class="card" style="text-align:center;">暂无题目</div>'; return; }
+    container.innerHTML = questions.map(q => {
+      const tagsHtml = q.tags ? q.tags.map(t => `<span class="badge">${t}</span>`).join('') : '';
+      return `<div class="question-card" id="card-${q.id}">
+        <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+          <span><span class="badge">${q.set_name || ''}</span><span class="badge">${q.difficulty || ''}</span></span>
+          <span><button onclick="editQuestion(${q.id})">✏️</button><button onclick="deleteQuestion(${q.id})" class="danger" style="margin-left:4px;">🗑️</button></span>
+        </div>
+        <div class="question-content" id="q-${q.id}">${q.content || ''}</div>
+        <div style="margin:8px 0;">${tagsHtml}</div>
+        <button onclick="toggleAnswer(${q.id})" class="secondary">🔍 显示答案</button>
+        <div id="ans-${q.id}" style="display:none; margin-top:12px; padding:12px; background:#f8fafc; border-radius:12px;">
+          <div id="a-${q.id}"><strong>答案：</strong>${q.answer || ''}</div>
+          <div id="ana-${q.id}" style="margin-top:8px;"><strong>解析：</strong>${q.analysis || ''}</div>
+        </div>
+      </div>`;
+    }).join('');
+    if (window.katex) { questions.forEach(q => { try { const el = document.getElementById('q-' + q.id); if (el) window.katex.render(q.content, el, { throwOnError: false }); } catch(e) {} }); }
+  }
+  
+  function toggleAnswer(id) { const ans = document.getElementById('ans-' + id); ans.style.display = ans.style.display === 'none' ? 'block' : 'none'; }
+  
+  function renderPagination() {
+    const total = Math.ceil(totalCount / PAGE_SIZE), pag = document.getElementById('pagination');
+    if (total <= 1) { pag.innerHTML = ''; return; }
+    let html = ''; for (let i=1; i<=total; i++) html += `<button class="${i===currentPage?'':'secondary'}" onclick="goToPage(${i})">${i}</button>`; pag.innerHTML = html;
+  }
+  function goToPage(p) { currentPage = p; refreshQuestions(); }
+  
+  async function editQuestion(id) {
+    const pwd = prompt('请输入编辑密码'); if (pwd !== EDIT_PASSWORD) { alert('密码错误'); return; }
+    const { data } = await supabase.from('questions').select().eq('id', id).single();
+    if (!data) return;
+    document.getElementById('editId').value = data.id;
+    document.getElementById('editContent').value = data.content || '';
+    document.getElementById('editOptions').value = data.options ? JSON.stringify(data.options) : '';
+    document.getElementById('editAnswer').value = data.answer || '';
+    document.getElementById('editAnalysis').value = data.analysis || '';
+    document.getElementById('editTags').value = data.tags ? data.tags.join(', ') : '';
+    document.getElementById('editSetName').value = data.set_name || '';
+    document.getElementById('editDifficulty').value = data.difficulty || '中等';
+    document.getElementById('editModal').style.display = 'flex';
+  }
+  
+  function closeModal() { document.getElementById('editModal').style.display = 'none'; }
+  
+  async function saveEdit() {
+    const id = document.getElementById('editId').value;
+    const updates = {
+      content: document.getElementById('editContent').value,
+      options: document.getElementById('editOptions').value ? JSON.parse(document.getElementById('editOptions').value) : null,
+      answer: document.getElementById('editAnswer').value,
+      analysis: document.getElementById('editAnalysis').value,
+      tags: document.getElementById('editTags').value.split(',').map(s => s.trim()).filter(Boolean),
+      set_name: document.getElementById('editSetName').value,
+      difficulty: document.getElementById('editDifficulty').value
+    };
+    const { error } = await supabase.from('questions').update(updates).eq('id', id);
+    if (error) showSnackbar('更新失败'); else { showSnackbar('保存成功'); closeModal(); refreshQuestions(); loadTags(); loadSets(); }
+  }
+  
+  async function deleteQuestion(id) { if (confirm('确定删除？')) { await supabase.from('questions').delete().eq('id', id); refreshQuestions(); loadTags(); } }
+  
+  function importCSV(event) {
+    const file = event.target.files[0]; if (!file) return;
+    Papa.parse(file, { header: true, complete: async (res) => {
+      const rows = res.data.filter(r => r.content);
+      const toInsert = rows.map(r => ({
+        content: r.content, options: r.options ? JSON.parse(r.options) : null,
+        answer: r.answer, analysis: r.analysis,
+        tags: r.tags ? r.tags.split(',').map(t => t.trim()) : [],
+        set_name: r.set_name, difficulty: r.difficulty || '中等'
+      }));
+      const { error } = await supabase.from('questions').insert(toInsert);
+      if (error) showSnackbar('导入失败'); else { showSnackbar(`成功导入 ${toInsert.length} 题`); refreshQuestions(); loadTags(); loadSets(); }
+    }});
+  }
+  
+  async function exportPDF() {
+    const cards = document.querySelectorAll('.question-card');
+    if (!cards.length) { alert('没有题目可导出'); return; }
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF('p', 'mm', 'a4');
+    let isFirst = true;
+    for (let i = 0; i < cards.length; i++) {
+      const canvas = await html2canvas(cards[i], { scale: 1.5 });
+      const imgData = canvas.toDataURL('image/png');
+      const imgWidth = 190, imgHeight = (canvas.height * imgWidth) / canvas.width;
+      if (!isFirst) pdf.addPage();
+      pdf.setFontSize(12); pdf.text(`题目 ${i+1}`, 10, 15);
+      pdf.addImage(imgData, 'PNG', 10, 20, imgWidth, imgHeight);
+      isFirst = false;
     }
+    pdf.save('题库试卷.pdf');
   }
-
-  function toggleAnswer(id) {
-    const ans = document.getElementById('ans-' + id);
-    ans.style.display = ans.style.display === 'none' ? 'block' : 'none';
-  }
-
-  // 加载 KaTeX 并刷新
+  
   const katexScript = document.createElement('script');
   katexScript.src = 'https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js';
   katexScript.onload = () => refreshQuestions();
